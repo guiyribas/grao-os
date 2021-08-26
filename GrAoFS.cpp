@@ -9,13 +9,13 @@
 #include <math.h>
 #include <io.h>
 #include <fcntl.h>
-using namespace std; // test
+using namespace std;
 
 void menu();
 
 FILE * f;
 
-//Estrutura de uma entrada
+// Estrutura de uma entrada
 typedef struct {
   unsigned char entryType; // 0xAA para arquivo e 0xFF para sub-diretorio
   char nome[25];
@@ -56,7 +56,7 @@ unsigned short int searchInFAT(int pos) {
   return aux;
 }
 
-int totalFreeSectors() { //retorna a quantidade de setores livres na fat
+int totalFreeSectors() { // retorna a quantidade de setores livres na fat
   unsigned short int value;
   int setoresLivres = 0;
   fseek(f, 0, SEEK_SET);
@@ -82,7 +82,6 @@ int getFileSize(const std::string & fileName) // retorna o tamanho do arquivo
 
   return fileSize;
 }
-//       C:\\Users\\Mateus\\Documents\\arquivoTeste.txt
 
 void format() {
   unsigned short zero = 0; // 0x00 for free sectors
@@ -101,11 +100,11 @@ void format() {
 
   for (int i = 0; i < nSectors; i++) {
     if (i < 64) {
-      fwrite( & F, sizeof(unsigned short), 1, f); //preenche os setores reservados da FAT
+      fwrite( & F, sizeof(unsigned short), 1, f); // preenche os setores reservados da FAT
     } else if (i == 64) {
       fwrite( & one, sizeof(unsigned short), 1, f); // preenche a entrada do root directory na FAT
     } else {
-      fwrite( & zero, sizeof(unsigned short), 1, f); //limpa qualquer entrada existente na tabela
+      fwrite( & zero, sizeof(unsigned short), 1, f); // limpa qualquer entrada existente na tabela
     }
   }
   cout << "| Formatacao concluida!\n" << endl;
@@ -156,7 +155,7 @@ void fileToFS() {
   unsigned short int um = 1;
   char filePath[1000];
 
-  cout << "| Digite o caminho do arquivo a ser copiado para o sistema de arquivo" << endl;
+  cout << "| Digite o caminho completo do arquivo a ser copiado para o GR/AO" << endl;
   fscanf(stdin, "%s", filePath);
 
   FILE * arq;
@@ -164,20 +163,17 @@ void fileToFS() {
   if (arq == NULL) {
     cout << "! ERRO - Caminho invalido" << endl;
     menu();
-    //exit(0);
   }
 
-  //c:\\users\\mateus\\documents\\arquivoTeste.txt
-
-  entry.entryType = 1; //0x01 - marcador de arquivo --- AA
-  fseek(arq, 0, SEEK_END); //corre para a ultima posi��o
-  entry.tamanho = getFileSize(filePath); //retorna o tamanho do arquivo
+  entry.entryType = 1; // 0x01 - marcador de arquivo
+  fseek(arq, 0, SEEK_END); // corre para a ultima posicao
+  entry.tamanho = getFileSize(filePath); // retorna o tamanho do arquivo
   char barra = '\\';
   char * ret;
-  ret = strrchr(filePath, barra); //procura a ultima ocorrencia do caracter barra
-  ret++; //avanca a ultima barra encontrada
+  ret = strrchr(filePath, barra); // procura a ultima ocorrencia do caracter barra
+  ret++; // avanca a ultima barra encontrada
   strncpy(entry.nome, ret, 25);
-  entry.cluster_inicial = searchFreeSector(); //procura um setor livre
+  entry.cluster_inicial = searchFreeSector(); // procura um setor livre
 
   int nSetores;
   nSetores = ceil((double)(double) entry.tamanho / 2048);
@@ -334,8 +330,6 @@ void fileToHD() {
   }
 }
 
-//C:\Users\\Mateus\\Documents\\trabSo3\\antigo\\
-
 void mkDir() {
   unsigned short int um = 1;
   char nomeDir[25];
@@ -347,10 +341,8 @@ void mkDir() {
   cout << "| Digite o nome do diretorio: ";
   scanf("%s", nomeDir);
 
-  newEntry.entryType = 2; //0x02 - marcador diretorio
+  newEntry.entryType = 2; // 0x02 - marcador diretorio
   strncpy(newEntry.nome, nomeDir, 25);
-  //cout<<newEntry.nome<< endl;
-  //
   newEntry.cluster_inicial = searchFreeSector();
   setOnFAT(um, newEntry.cluster_inicial);
   newEntry.tamanho = 0;
@@ -360,7 +352,6 @@ void mkDir() {
     fseek(f, currentEntry * 2048, SEEK_SET);
     for (int i = 0; i < 64; i++) {
       fread( & auxEntry, sizeof(Entry), 1, f);
-      //printf("aux: %s\t neW: %s\n", auxEntry.nome, newEntry.nome);
       if (!strncmp(auxEntry.nome, newEntry.nome, 25)) {
         cout << "! Diretorio ja existente" << endl;
         return;
@@ -379,7 +370,7 @@ void mkDir() {
       fseek(f, searchInFAT(currentEntry) * 2048, SEEK_SET);
       fwrite( & newEntry, sizeof(Entry), 1, f);
     }
-    fseek(f, currentEntry * 2048 + i * sizeof(Entry), SEEK_SET); //seguro morreu de velho
+    fseek(f, currentEntry * 2048 + i * sizeof(Entry), SEEK_SET);
     fread( & auxEntry, sizeof(Entry), 1, f);
     fflush(f);
 
@@ -404,7 +395,7 @@ void menu() {
     cout << "| 1 - Formatar disco                           |" << endl;
     cout << "| 2 - Listar arquivos e diretorios             |" << endl;
     cout << "| 3 - Criar sub-diretorio                      |" << endl;
-    cout << "| 4 - Copiar arquivo para o sitema de arquivo  |" << endl;
+    cout << "| 4 - Copiar arquivo para o sistema de arquivo |" << endl;
     cout << "| 5 - Copiar arquivo para o disco              |" << endl;
     cout << "| 6 - Sair                                     |"<< endl;
     cout << "|----------------------------------------------|" << endl;
