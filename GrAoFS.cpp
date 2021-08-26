@@ -9,7 +9,7 @@
 #include <math.h>
 #include <io.h>
 #include <fcntl.h>
-using namespace std;
+using namespace std; // test
 
 void menu();
 
