@@ -115,19 +115,19 @@ void listFiles() {
   int currentSector = 64;
   Entry currentEntry;
   int entries = 0;
-  currentEntry.entryType = 170;
+  currentEntry.entryType = 1;
   do {
     fseek(f, currentSector * 2048, SEEK_SET);
     while (currentEntry.entryType != 0 && entries < 64) {
 
       fread( & currentEntry, sizeof(Entry), 1, f);
-      if (currentEntry.entryType == 170) {
+      if (currentEntry.entryType == 1) {
         cout << "| Arquivo" << endl;
         cout << "|\t Nome: " << currentEntry.nome << endl;
         cout << "|\t Tamanho: " << currentEntry.tamanho << " (Bytes)" << endl;
       } else {
 
-        if (currentEntry.entryType == 255) {
+        if (currentEntry.entryType == 2) {
           cout << "| Diretorio" << endl;
           cout << "|\t Nome: " << currentEntry.nome << endl;
         }
@@ -154,26 +154,27 @@ void fileToFS() {
   int dirSector = 64;
   char buffer[2048];
   unsigned short int um = 1;
-  char caminhoArquivo[1000];
+  char filePath[1000];
 
   cout << "| Digite o caminho do arquivo a ser copiado para o sistema de arquivo" << endl;
-  fscanf(stdin, "%s", caminhoArquivo);
+  fscanf(stdin, "%s", filePath);
 
   FILE * arq;
-  arq = fopen(caminhoArquivo, "rb+"); // tenta abrir o arquivo
+  arq = fopen(filePath, "rb+"); // tenta abrir o arquivo
   if (arq == NULL) {
     cout << "! ERRO - Caminho invalido" << endl;
-    exit(0);
+    menu();
+    //exit(0);
   }
 
   //c:\\users\\mateus\\documents\\arquivoTeste.txt
 
-  entry.entryType = 170; //define o tipo da entrada (0xAA = arquivo)
+  entry.entryType = 1; //0x01 - marcador de arquivo --- AA
   fseek(arq, 0, SEEK_END); //corre para a ultima posi��o
-  entry.tamanho = getFileSize(caminhoArquivo); //retorna o tamanho do arquivo
+  entry.tamanho = getFileSize(filePath); //retorna o tamanho do arquivo
   char barra = '\\';
   char * ret;
-  ret = strrchr(caminhoArquivo, barra); //procura a ultima ocorrencia do caracter barra
+  ret = strrchr(filePath, barra); //procura a ultima ocorrencia do caracter barra
   ret++; //avanca a ultima barra encontrada
   strncpy(entry.nome, ret, 25);
   entry.cluster_inicial = searchFreeSector(); //procura um setor livre
@@ -194,7 +195,7 @@ void fileToFS() {
   fseek(f, 64 * 2048, SEEK_SET);
 
   while (fread( & dump, sizeof(Entry), 1, f)) {
-    if ((dump.entryType == 170 || dump.entryType == 255) && nEntradas < 64) {
+    if ((dump.entryType == 1 || dump.entryType == 2) && nEntradas < 64) {
 
       if (!strncmp(dump.nome, entry.nome, 25)) {
         cout << "! Arquivo existente no sistema" << endl;
@@ -299,7 +300,7 @@ void fileToHD() {
     for (int i = 0; i < 64; i++) {
       fseek(f, (setorAtual * 2048) + (i * sizeof(Entry)), SEEK_SET);
       fread( & entradaAtual, sizeof(Entry), 1, f);
-      if (entradaAtual.entryType != 170 && entradaAtual.entryType != 255) {
+      if (entradaAtual.entryType != 1 && entradaAtual.entryType != 2) {
         fclose(dest);
         cout << "! Falha na exportacao do arquivo"<< endl;
         return;
@@ -346,7 +347,7 @@ void mkDir() {
   cout << "| Digite o nome do diretorio: ";
   scanf("%s", nomeDir);
 
-  newEntry.entryType = 255;
+  newEntry.entryType = 2; //0x02 - marcador diretorio
   strncpy(newEntry.nome, nomeDir, 25);
   //cout<<newEntry.nome<< endl;
   //
@@ -386,7 +387,7 @@ void mkDir() {
       cout << "! Diretorio ja existente" << endl;
       return;
     }
-    if (auxEntry.entryType != 255 && auxEntry.entryType != 170) {
+    if (auxEntry.entryType != 2 && auxEntry.entryType != 1) {
       fseek(f, currentEntry * 2048 + i * sizeof(Entry), SEEK_SET);
       fwrite( & newEntry, sizeof(Entry), 1, f);
       break;
@@ -401,10 +402,10 @@ void menu() {
     unsigned int op;
     cout << "|----------------------------------------------|" << endl;
     cout << "| 1 - Formatar disco                           |" << endl;
-    cout << "| 2 - Copiar arquivo para o sitema de arquivo  |" << endl;
-    cout << "| 3 - Copiar arquivo para o disco              |" << endl;
-    cout << "| 4 - Listar arquivos do diretorio atual       |" << endl;
-    cout << "| 5 - Criar sub-diretorio                      |" << endl;
+    cout << "| 2 - Listar arquivos e diretorios             |" << endl;
+    cout << "| 3 - Criar sub-diretorio                      |" << endl;
+    cout << "| 4 - Copiar arquivo para o sitema de arquivo  |" << endl;
+    cout << "| 5 - Copiar arquivo para o disco              |" << endl;
     cout << "| 6 - Sair                                     |"<< endl;
     cout << "|----------------------------------------------|" << endl;
     cout << "| Opcao desejada: ";
@@ -419,22 +420,22 @@ void menu() {
       break;
     case 2:
       openImage();
-      fileToFS();
+      listFiles();
       fclose(f);
       break;
     case 3:
       openImage();
-      fileToHD();
+      mkDir();
       fclose(f);
       break;
     case 4:
       openImage();
-      listFiles();
+      fileToFS();
       fclose(f);
       break;
     case 5:
       openImage();
-      mkDir();
+      fileToHD();
       fclose(f);
       break;
     case 6:
