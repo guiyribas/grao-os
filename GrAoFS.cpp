@@ -15,6 +15,9 @@ void menu();
 
 FILE * f;
 
+int SECTOR_SIZE = 512;
+int SECTOR_PER_CLUSTER = 4;
+
 // Estrutura de uma entrada
 typedef struct {
   unsigned char entryType; // 0xAA para arquivo e 0xFF para sub-diretorio
@@ -58,15 +61,15 @@ unsigned short int searchInFAT(int pos) {
 
 int totalFreeSectors() { // retorna a quantidade de setores livres na fat
   unsigned short int value;
-  int setoresLivres = 0;
+  int freeSectors = 0;
   fseek(f, 0, SEEK_SET);
   for (int i = 0; i < 65536; i++) {
     fread( & value, sizeof(unsigned short int), 1, f);
     if (value == 0) {
-      setoresLivres++;
+      freeSectors++;
     }
   }
-  return setoresLivres;
+  return freeSectors;
 }
 
 int getFileSize(const std::string & fileName) // retorna o tamanho do arquivo
@@ -96,7 +99,7 @@ void format() {
     menu();
   }
 
-  nSectors = (nSectors * 2048) / 2;
+  nSectors = (nSectors * (SECTOR_SIZE * SECTOR_PER_CLUSTER)) / 2;
 
   for (int i = 0; i < nSectors; i++) {
     if (i < 64) {
@@ -116,7 +119,7 @@ void listFiles() {
   int entries = 0;
   currentEntry.entryType = 1;
   do {
-    fseek(f, currentSector * 2048, SEEK_SET);
+    fseek(f, currentSector * (SECTOR_SIZE * SECTOR_PER_CLUSTER), SEEK_SET);
     while (currentEntry.entryType != 0 && entries < 64) {
 
       fread( & currentEntry, sizeof(Entry), 1, f);
@@ -148,14 +151,14 @@ void listFiles() {
 }
 
 void fileToFS() {
-  FILE * arquivo;
   Entry entry;
   int dirSector = 64;
   char buffer[2048];
-  unsigned short int um = 1;
+  unsigned short int one = 1;
   char filePath[1000];
 
-  cout << "| Digite o caminho completo do arquivo a ser copiado para o GR/AO" << endl;
+  cout << "| Digite o caminho completo do arquivo a ser copiado para o GR/AO:" << endl;
+  cout << "| ";
   fscanf(stdin, "%s", filePath);
 
   FILE * arq;
@@ -168,83 +171,80 @@ void fileToFS() {
   entry.entryType = 1; // 0x01 - marcador de arquivo
   fseek(arq, 0, SEEK_END); // corre para a ultima posicao
   entry.tamanho = getFileSize(filePath); // retorna o tamanho do arquivo
-  char barra = '\\';
+  char bar = '\\';
   char * ret;
-  ret = strrchr(filePath, barra); // procura a ultima ocorrencia do caracter barra
+  ret = strrchr(filePath, bar); // procura a ultima ocorrencia do caracter barra
   ret++; // avanca a ultima barra encontrada
   strncpy(entry.nome, ret, 25);
   entry.cluster_inicial = searchFreeSector(); // procura um setor livre
 
-  int nSetores;
-  nSetores = ceil((double)(double) entry.tamanho / 2048);
-  cout << "| Numero de setores: " << nSetores << endl;
-  if (nSetores > totalFreeSectors()) {
+  int nSectors;
+  nSectors = ceil((double)(double) entry.tamanho / (SECTOR_SIZE * SECTOR_PER_CLUSTER));
+  if (nSectors > totalFreeSectors()) {
     cout << "! Espaco insuficiente" << endl;
     fclose(arq);
     return;
   }
 
-  Entry dump;
-  int nEntradas = 0;
+  Entry temp;
+  int nEntries = 0;
 
   fseek(arq, 0, SEEK_SET);
-  fseek(f, 64 * 2048, SEEK_SET);
+  fseek(f, 64 * (SECTOR_SIZE * SECTOR_PER_CLUSTER), SEEK_SET);
 
-  while (fread( & dump, sizeof(Entry), 1, f)) {
-    if ((dump.entryType == 1 || dump.entryType == 2) && nEntradas < 64) {
+  while (fread( & temp, sizeof(Entry), 1, f)) {
+    if ((temp.entryType == 1 || temp.entryType == 2) && nEntries < 64) {
 
-      if (!strncmp(dump.nome, entry.nome, 25)) {
+      if (!strncmp(temp.nome, entry.nome, 25)) {
         cout << "! Arquivo existente no sistema" << endl;
         return;
       }
-      nEntradas++;
+      nEntries++;
     } else {
 
-      if (nEntradas != 64) {
-        cout << dirSector * 2048 + nEntradas << endl;
-        cout << entry.nome << endl;
-        fseek(f, dirSector * 2048 + nEntradas * sizeof(Entry), SEEK_SET);
+      if (nEntries != 64) {
+        fseek(f, dirSector * (SECTOR_SIZE * SECTOR_PER_CLUSTER) + nEntries * sizeof(Entry), SEEK_SET);
         fwrite( & entry, sizeof(Entry), 1, f);
         break;
       } else {
         cout << "| Setor cheio, alocando novo setor..." << endl;
         setOnFAT(searchFreeSector(), dirSector);
         dirSector = searchInFAT(dirSector);
-        setOnFAT(um, dirSector);
+        setOnFAT(one, dirSector);
         fseek(f, dirSector * 64, SEEK_SET);
         fwrite( & entry, sizeof(Entry), 1, f);
-        nEntradas = 0;
+        nEntries = 0;
       }
     }
   }
   fflush(f);
 
-  int setorAtual = entry.cluster_inicial;
-  int novoSetor = 0;
+  int currentSector = entry.cluster_inicial;
+  int newSector = 0;
 
   fseek(arq, 0, SEEK_SET);
-  int tamanho = entry.tamanho % 2048;
+  int size = entry.tamanho % (SECTOR_SIZE * SECTOR_PER_CLUSTER);
 
-  for (nSetores; nSetores >= 1; nSetores--) {
-    if (nSetores == 1) {
-      char buffer2[tamanho];
-      fread( & buffer2, tamanho, 1, arq);
-      fseek(f, (setorAtual) * 2048, SEEK_SET);
-      fwrite( & buffer2, tamanho, 1, f);
-      setOnFAT(um, setorAtual);
+  for (nSectors; nSectors >= 1; nSectors--) {
+    if (nSectors == 1) {
+      char tempBuffer[size];
+      fread( & tempBuffer, size, 1, arq);
+      fseek(f, (currentSector) * (SECTOR_SIZE * SECTOR_PER_CLUSTER), SEEK_SET);
+      fwrite( & tempBuffer, size, 1, f);
+      setOnFAT(one, currentSector);
       fclose(f);
 
     } else {
-      fread( & buffer, 2048, 1, arq);
-      fseek(f, (setorAtual) * 2048, SEEK_SET);
+      fread( & buffer, (SECTOR_SIZE * SECTOR_PER_CLUSTER), 1, arq);
+      fseek(f, (currentSector) * (SECTOR_SIZE * SECTOR_PER_CLUSTER), SEEK_SET);
       fflush(f);
-      fwrite( & buffer, 2048, 1, f);
-      setOnFAT(setorAtual, setorAtual);
-      novoSetor = searchFreeSector();
-      setOnFAT(novoSetor, setorAtual);
+      fwrite( & buffer, (SECTOR_SIZE * SECTOR_PER_CLUSTER), 1, f);
+      setOnFAT(currentSector, currentSector);
+      newSector = searchFreeSector();
+      setOnFAT(newSector, currentSector);
 
-      novoSetor = searchFreeSector();
-      setorAtual = novoSetor;
+      newSector = searchFreeSector();
+      currentSector = newSector;
 
     }
 
@@ -257,34 +257,35 @@ void fileToFS() {
 void fileToHD() {
   FILE * dest;
   char origin[1000], destiny[1000], buffer[2048];
-  unsigned short int setorAtual = 64;
-  Entry entradaAtual;
+  unsigned short int currentSector = 64;
+  Entry currentEntry;
 
-  cout << "| Digite o nome do arquivo a ser copiado" << endl;
+  cout << "| Digite o nome do arquivo a ser copiado:" << endl;
+  cout << "| ";
   cin >> origin;
-  cout << "| Digite o caminho destino" << endl;
+  cout << "| Digite o caminho destino:" << endl;
+  cout << "| ";
   cin >> destiny;
 
   strcat(destiny, "\\");
   strcat(destiny, origin);
-  cout << destiny << endl;
   dest = fopen(destiny, "wb+");
-  int terminou = 0;
+  bool finish = false;
 
-  while (searchInFAT(setorAtual) != 1) {
-    fseek(f, setorAtual * 2048, SEEK_SET);
+  while (searchInFAT(currentSector) != 1) {
+    fseek(f, currentSector * (SECTOR_SIZE * SECTOR_PER_CLUSTER), SEEK_SET);
     for (int i = 0; i < 64; i++) {
-      fread( & setorAtual, sizeof(Entry), 1, f);
-      if (!strncmp(origin, entradaAtual.nome, 25)) {
-        setorAtual = entradaAtual.cluster_inicial;
-        while (!terminou) {
-          if (searchInFAT(setorAtual) == 1) {
-            terminou = 1;
+      fread( & currentSector, sizeof(Entry), 1, f);
+      if (!strncmp(origin, currentEntry.nome, 25)) {
+        currentSector = currentEntry.cluster_inicial;
+        while (!finish) {
+          if (searchInFAT(currentSector) == 1) {
+            finish = true;
           }
-          fseek(f, setorAtual * 2048, SEEK_SET);
-          fread( & buffer, 2048, 1, f);
-          fwrite( & buffer, 2048, 1, dest);
-          setorAtual = searchInFAT(setorAtual);
+          fseek(f, currentSector * (SECTOR_SIZE * SECTOR_PER_CLUSTER), SEEK_SET);
+          fread( & buffer, (SECTOR_SIZE * SECTOR_PER_CLUSTER), 1, f);
+          fwrite( & buffer, (SECTOR_SIZE * SECTOR_PER_CLUSTER), 1, dest);
+          currentSector = searchInFAT(currentSector);
         }
         fclose(dest);
         cout << "| Arquivo exportado com sucesso" << endl;
@@ -292,33 +293,35 @@ void fileToHD() {
       }
     }
   }
-  if (searchInFAT(setorAtual == 1)) {
+  if (searchInFAT(currentSector == 1)) {
     for (int i = 0; i < 64; i++) {
-      fseek(f, (setorAtual * 2048) + (i * sizeof(Entry)), SEEK_SET);
-      fread( & entradaAtual, sizeof(Entry), 1, f);
-      if (entradaAtual.entryType != 1 && entradaAtual.entryType != 2) {
+      fseek(f, (currentSector * (SECTOR_SIZE * SECTOR_PER_CLUSTER)) + (i * sizeof(Entry)), SEEK_SET);
+      fread( & currentEntry, sizeof(Entry), 1, f);
+      if (currentEntry.entryType != 1 && currentEntry.entryType != 2) {
         fclose(dest);
         cout << "! Falha na exportacao do arquivo"<< endl;
         return;
       }
-      if (!strncmp(origin, entradaAtual.nome, 25)) {
-        setorAtual = entradaAtual.cluster_inicial;
-        int a = entradaAtual.tamanho, b = 2048, res;
+      if (!strncmp(origin, currentEntry.nome, 25)) {
+        currentSector = currentEntry.cluster_inicial;
+        int a = currentEntry.tamanho;
+        int b = 2048;
+        int res;
         res = a % b;
-        char buffer2[res];
-        int nSetores = ceil((double)(double) entradaAtual.tamanho / 2048);;
+        char tempBuffer[res];
+        int nSetores = ceil((double)(double) currentEntry.tamanho / (SECTOR_SIZE * SECTOR_PER_CLUSTER));;
 
         for (nSetores; nSetores > 0; nSetores--) {
           if (nSetores == 1) {
-            fseek(f, setorAtual * 2048, SEEK_SET);
-            fread( & buffer2, res, 1, f);
-            fwrite( & buffer2, res, 1, dest);
-            setorAtual = searchInFAT(setorAtual);
+            fseek(f, currentSector * (SECTOR_SIZE * SECTOR_PER_CLUSTER), SEEK_SET);
+            fread( & tempBuffer, res, 1, f);
+            fwrite( & tempBuffer, res, 1, dest);
+            currentSector = searchInFAT(currentSector);
           } else {
-            fseek(f, setorAtual * 2048, SEEK_SET);
-            fread( & buffer, 2048, 1, f);
-            fwrite( & buffer, 2048, 1, dest);
-            setorAtual = searchInFAT(setorAtual);
+            fseek(f, currentSector * (SECTOR_SIZE * SECTOR_PER_CLUSTER), SEEK_SET);
+            fread( & buffer, (SECTOR_SIZE * SECTOR_PER_CLUSTER), 1, f);
+            fwrite( & buffer, (SECTOR_SIZE * SECTOR_PER_CLUSTER), 1, dest);
+            currentSector = searchInFAT(currentSector);
           }
         }
         fclose(dest);
@@ -331,25 +334,25 @@ void fileToHD() {
 }
 
 void mkDir() {
-  unsigned short int um = 1;
-  char nomeDir[25];
+  unsigned short int one = 1;
+  char dirName[25];
   Entry newEntry;
   Entry auxEntry;
 
   int currentEntry = 64;
 
   cout << "| Digite o nome do diretorio: ";
-  scanf("%s", nomeDir);
+  scanf("%s", dirName);
 
   newEntry.entryType = 2; // 0x02 - marcador diretorio
-  strncpy(newEntry.nome, nomeDir, 25);
+  strncpy(newEntry.nome, dirName, 25);
   newEntry.cluster_inicial = searchFreeSector();
-  setOnFAT(um, newEntry.cluster_inicial);
+  setOnFAT(one, newEntry.cluster_inicial);
   newEntry.tamanho = 0;
 
   while (searchInFAT(currentEntry) != 1) {
     currentEntry = searchInFAT(currentEntry);
-    fseek(f, currentEntry * 2048, SEEK_SET);
+    fseek(f, currentEntry * (SECTOR_SIZE * SECTOR_PER_CLUSTER), SEEK_SET);
     for (int i = 0; i < 64; i++) {
       fread( & auxEntry, sizeof(Entry), 1, f);
       if (!strncmp(auxEntry.nome, newEntry.nome, 25)) {
@@ -359,18 +362,18 @@ void mkDir() {
     }
   }
 
-  fseek(f, currentEntry * 2048, SEEK_SET);
+  fseek(f, currentEntry * (SECTOR_SIZE * SECTOR_PER_CLUSTER), SEEK_SET);
 
   for (int i = 0; i <= 64; i++) {
     if (i == 64) {
       setOnFAT(searchFreeSector(), currentEntry);
       fseek(f, searchInFAT(currentEntry) * sizeof(unsigned short int), SEEK_SET);
-      unsigned short int um = 1;
-      fwrite( & um, sizeof(unsigned short int), 1, f);
-      fseek(f, searchInFAT(currentEntry) * 2048, SEEK_SET);
+      unsigned short int one = 1;
+      fwrite( & one, sizeof(unsigned short int), 1, f);
+      fseek(f, searchInFAT(currentEntry) * (SECTOR_SIZE * SECTOR_PER_CLUSTER), SEEK_SET);
       fwrite( & newEntry, sizeof(Entry), 1, f);
     }
-    fseek(f, currentEntry * 2048 + i * sizeof(Entry), SEEK_SET);
+    fseek(f, currentEntry * (SECTOR_SIZE * SECTOR_PER_CLUSTER) + i * sizeof(Entry), SEEK_SET);
     fread( & auxEntry, sizeof(Entry), 1, f);
     fflush(f);
 
@@ -379,7 +382,7 @@ void mkDir() {
       return;
     }
     if (auxEntry.entryType != 2 && auxEntry.entryType != 1) {
-      fseek(f, currentEntry * 2048 + i * sizeof(Entry), SEEK_SET);
+      fseek(f, currentEntry * (SECTOR_SIZE * SECTOR_PER_CLUSTER) + i * sizeof(Entry), SEEK_SET);
       fwrite( & newEntry, sizeof(Entry), 1, f);
       break;
     }
@@ -397,7 +400,7 @@ void menu() {
     cout << "| 3 - Criar sub-diretorio                      |" << endl;
     cout << "| 4 - Copiar arquivo para o sistema de arquivo |" << endl;
     cout << "| 5 - Copiar arquivo para o disco              |" << endl;
-    cout << "| 6 - Sair                                     |"<< endl;
+    cout << "| 0 - Sair                                     |"<< endl;
     cout << "|----------------------------------------------|" << endl;
     cout << "| Opcao desejada: ";
 
@@ -429,7 +432,7 @@ void menu() {
       fileToHD();
       fclose(f);
       break;
-    case 6:
+    case 0:
       cout << "| Saindo...";
       exit(0);
       break;
@@ -438,7 +441,6 @@ void menu() {
       menu();
       break;
     }
-    
   }
 }
 
