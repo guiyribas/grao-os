@@ -7,7 +7,7 @@
 #include <unistd.h>
 #include <fstream>
 #include <math.h>
-#include <io.h>
+// #include <io.h>
 #include <fcntl.h>
 using namespace std;
 
@@ -28,7 +28,7 @@ typedef struct {
 __attribute__((packed)) Entry;
 
 void openImage() {
-  f = fopen("imagem.img", "rb+");
+  f = fopen("img-grao.img", "rb+");
   if (f == NULL) {
     cout << "Erro" << endl;
     exit(0);
@@ -120,8 +120,7 @@ void listFiles() {
   currentEntry.entryType = 1;
   do {
     fseek(f, currentSector * (SECTOR_SIZE * SECTOR_PER_CLUSTER), SEEK_SET);
-    while (currentEntry.entryType != 0 && entries < 64) {
-
+    while (entries < 64) { // && currentEntry.entryType != 82 && currentEntry.entryType != 81
       fread( & currentEntry, sizeof(Entry), 1, f);
       if (currentEntry.entryType == 1) {
         cout << "| Arquivo" << endl;
@@ -136,7 +135,6 @@ void listFiles() {
       }
       if (currentEntry.entryType == 0) {
         entries++;
-        break;
       }
       entries++;
     }
@@ -333,6 +331,61 @@ void fileToHD() {
   }
 }
 
+void deleteFile() {
+  unsigned char zero = 0;
+  char fileName[25];
+  int currentSector = 64;
+  Entry currentEntry;
+  Entry deleteEntry;
+  int entries = 0;
+  // currentEntry.entryType = 1;
+
+  cout << "| Digite o nome do arquivo a ser excluido: ";
+  scanf("%s", fileName);
+  strncpy(deleteEntry.nome, fileName, 25);
+  cout << "deleteEntry.nome -> " << deleteEntry.nome << endl;
+  deleteEntry.entryType = 0;
+
+  int clusterInicialDeleted = 0;
+
+  // while (searchInFAT(currentSector) != 1) {
+    fseek(f, currentSector * (SECTOR_SIZE * SECTOR_PER_CLUSTER), SEEK_SET);
+    while (entries < 64) { // && currentEntry.entryType != 82 && currentEntry.entryType != 81
+      fread( & currentEntry, sizeof(Entry), 1, f);
+      cout << "current entry name fora " << currentEntry.nome << endl;
+      cout << "current entry type size fora " << currentEntry.entryType << endl;
+      cout << "current cluster_inicial fora " << currentEntry.cluster_inicial << endl;
+
+      if (strncmp(currentEntry.nome, deleteEntry.nome, 25)) {
+        cout << "currentEntry entry type " << currentEntry.entryType << endl;
+        cout << "currentEntry cluster_inicial " << currentEntry.cluster_inicial << endl;
+        clusterInicialDeleted = currentEntry.cluster_inicial;
+        for (int i = 0; i < 32; i++) {
+          fwrite( & zero, sizeof(unsigned char), 1, f);
+        }
+        fseek(f, clusterInicialDeleted * 2, SEEK_SET);
+        for (int i = 0; i < 2; i++) {
+          fwrite( & zero, sizeof(unsigned char), 1, f);
+        }
+        cout << "File excluido com sucesso!" << endl;
+        break;
+      } 
+      // else {
+      //   fseek(f, currentSector * (SECTOR_SIZE * SECTOR_PER_CLUSTER) + (32 * entries), SEEK_SET);
+      // }
+      entries++;
+    }
+    cout << "will exit" << endl;
+    return;
+    // if (searchInFAT(currentSector) != 1) {
+    //   currentSector = searchInFAT(currentSector);
+    //   continue;
+    // } else {
+    //   break;
+    // }
+  // }
+}
+
 void mkDir() {
   unsigned short int one = 1;
   char dirName[25];
@@ -400,6 +453,7 @@ void menu() {
     cout << "| 3 - Criar sub-diretorio                      |" << endl;
     cout << "| 4 - Copiar arquivo para o sistema de arquivo |" << endl;
     cout << "| 5 - Copiar arquivo para o disco              |" << endl;
+    cout << "| 6 - Deletar arquivo                          |" << endl;
     cout << "| 0 - Sair                                     |"<< endl;
     cout << "|----------------------------------------------|" << endl;
     cout << "| Opcao desejada: ";
@@ -430,6 +484,11 @@ void menu() {
     case 5:
       openImage();
       fileToHD();
+      fclose(f);
+      break;
+    case 6:
+      openImage();
+      deleteFile();
       fclose(f);
       break;
     case 0:
