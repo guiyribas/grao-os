@@ -28,7 +28,7 @@ typedef struct {
 __attribute__((packed)) Entry;
 
 void openImage() {
-  f = fopen("img-grao.img", "rb+");
+  f = fopen("img-grao-2.img", "rb+");
   if (f == NULL) {
     cout << "Erro" << endl;
     exit(0);
@@ -126,12 +126,9 @@ void listFiles() {
         cout << "| Arquivo" << endl;
         cout << "|\t Nome: " << currentEntry.nome << endl;
         cout << "|\t Tamanho: " << currentEntry.tamanho << " (Bytes)" << endl;
-      } else {
-
-        if (currentEntry.entryType == 2) {
+      } else  if (currentEntry.entryType == 2) {
           cout << "| Diretorio" << endl;
           cout << "|\t Nome: " << currentEntry.nome << endl;
-        }
       }
       if (currentEntry.entryType == 0) {
         entries++;
@@ -331,59 +328,65 @@ void fileToHD() {
   }
 }
 
+void verify() {
+  char firstFile[25];
+  char secondFile[25];
+  int currentSector = 64;
+  Entry firstEntry;
+  Entry secondEntry;
+  int entries = 0;
+
+  cout << "| Verifica se 2 arquivos apontam para o mesmo bloco de dados " << endl;
+  cout << "| Primeiro arquivo a ser analisado: ";
+  scanf("%s", firstFile);
+  strncpy(firstEntry.nome, firstFile, 25);
+  cout << "| Segundo arquivo a ser analisado: ";
+  scanf("%s", secondFile);
+  strncpy(secondEntry.nome, secondFile, 25);
+
+  fseek(f, currentSector * (SECTOR_SIZE * SECTOR_PER_CLUSTER), SEEK_SET);
+  
+  fread( & firstEntry, sizeof(Entry), 1, f);
+  while (entries < 64) {
+    fread( & firstEntry, sizeof(Entry), 1, f);
+    fread( & secondEntry, sizeof(Entry), 1, f);
+    if (firstEntry.cluster_inicial == secondEntry.cluster_inicial && firstEntry.cluster_inicial != 0 && secondEntry.cluster_inicial != 0) {
+      cout << "| Arquivos apontam para o mesmo cluster inicial" << secondEntry.cluster_inicial << endl;
+      break;
+    }
+    entries++;
+  }
+  cout << "| Arquivos não coincidem " << endl;
+  return;
+}
+
 void deleteFile() {
-  unsigned char zero = 0;
+  // unsigned char zero = 0;
+  unsigned char deletedMark = 81; // 0x51 para arquivo deletado
   char fileName[25];
   int currentSector = 64;
   Entry currentEntry;
-  Entry deleteEntry;
   int entries = 0;
-  // currentEntry.entryType = 1;
+  int clusterToDelete = 0;
 
   cout << "| Digite o nome do arquivo a ser excluido: ";
   scanf("%s", fileName);
-  strncpy(deleteEntry.nome, fileName, 25);
-  cout << "deleteEntry.nome -> " << deleteEntry.nome << endl;
-  deleteEntry.entryType = 0;
 
-  int clusterInicialDeleted = 0;
-
-  // while (searchInFAT(currentSector) != 1) {
-    fseek(f, currentSector * (SECTOR_SIZE * SECTOR_PER_CLUSTER), SEEK_SET);
-    while (entries < 64) { // && currentEntry.entryType != 82 && currentEntry.entryType != 81
-      fread( & currentEntry, sizeof(Entry), 1, f);
-      cout << "current entry name fora " << currentEntry.nome << endl;
-      cout << "current entry type size fora " << currentEntry.entryType << endl;
-      cout << "current cluster_inicial fora " << currentEntry.cluster_inicial << endl;
-
-      if (strncmp(currentEntry.nome, deleteEntry.nome, 25)) {
-        cout << "currentEntry entry type " << currentEntry.entryType << endl;
-        cout << "currentEntry cluster_inicial " << currentEntry.cluster_inicial << endl;
-        clusterInicialDeleted = currentEntry.cluster_inicial;
-        for (int i = 0; i < 32; i++) {
-          fwrite( & zero, sizeof(unsigned char), 1, f);
-        }
-        fseek(f, clusterInicialDeleted * 2, SEEK_SET);
-        for (int i = 0; i < 2; i++) {
-          fwrite( & zero, sizeof(unsigned char), 1, f);
-        }
-        cout << "File excluido com sucesso!" << endl;
-        break;
-      } 
-      // else {
-      //   fseek(f, currentSector * (SECTOR_SIZE * SECTOR_PER_CLUSTER) + (32 * entries), SEEK_SET);
-      // }
-      entries++;
-    }
-    cout << "will exit" << endl;
-    return;
-    // if (searchInFAT(currentSector) != 1) {
-    //   currentSector = searchInFAT(currentSector);
-    //   continue;
-    // } else {
-    //   break;
-    // }
-  // }
+  fseek(f, currentSector * (SECTOR_SIZE * SECTOR_PER_CLUSTER), SEEK_SET);
+  while (entries < 64) { 
+    fread( & currentEntry, sizeof(Entry), 1, f);
+    if (!strncmp(currentEntry.nome, fileName, 25)) {
+      clusterToDelete = currentEntry.cluster_inicial;
+      fseek(f, currentSector * (SECTOR_SIZE * SECTOR_PER_CLUSTER) + (32 * entries), SEEK_SET);
+      fwrite( & deletedMark, sizeof(unsigned char), 1, f); // mark file as deleted), 1, f);
+      cout << "File excluido com sucesso!" << endl;
+      return;
+    } 
+    entries++;
+  }
+  cout << "! File nao encontrado" << endl;
+  return;
+    
 }
 
 void mkDir() {
@@ -434,7 +437,7 @@ void mkDir() {
       cout << "! Diretorio ja existente" << endl;
       return;
     }
-    if (auxEntry.entryType != 2 && auxEntry.entryType != 1) {
+    if (auxEntry.entryType != 2 && auxEntry.entryType != 1 && auxEntry.entryType != 81) {
       fseek(f, currentEntry * (SECTOR_SIZE * SECTOR_PER_CLUSTER) + i * sizeof(Entry), SEEK_SET);
       fwrite( & newEntry, sizeof(Entry), 1, f);
       break;
@@ -454,7 +457,8 @@ void menu() {
     cout << "| 4 - Copiar arquivo para o sistema de arquivo |" << endl;
     cout << "| 5 - Copiar arquivo para o disco              |" << endl;
     cout << "| 6 - Deletar arquivo                          |" << endl;
-    cout << "| 0 - Sair                                     |"<< endl;
+    cout << "| 7 - Verificar inconsitencia no bloco de dados|" << endl;
+    cout << "| 0 - Sair                                     |" << endl;
     cout << "|----------------------------------------------|" << endl;
     cout << "| Opcao desejada: ";
 
@@ -489,6 +493,11 @@ void menu() {
     case 6:
       openImage();
       deleteFile();
+      fclose(f);
+      break;
+    case 7:
+      openImage();
+      verify();
       fclose(f);
       break;
     case 0:
